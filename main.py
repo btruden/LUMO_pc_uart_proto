@@ -1,9 +1,9 @@
 def main():
     # Ask the user for input
-    user_input = input("Enter something: ")
+    user_input = input("CLI: ")
 
     # Print what the user typed
-    print(f"You typed: {user_input}")
+    print(f"Echo: {user_input}")
 
 
 if __name__ == "__main__":
