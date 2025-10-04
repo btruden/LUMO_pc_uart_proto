@@ -16,8 +16,9 @@ import serial
 import serial.tools.list_ports
 
 # === Configuration constants ===
-BAUDRATE = 115200          # Default UART speed (bits per second)
-TIMEOUT = 1.0              # Serial read timeout (seconds)
+BAUDRATE = 115200           # Default UART speed (bits per second)
+TIMEOUT = 1.0               # Serial read timeout (seconds)
+MAX_MESSAGE_LENGTH = 128    # Maximum allowed message length in bytes
 
 
 def list_available_ports():
@@ -105,11 +106,14 @@ def transmit_user_input(ser):
     The user can type any text and press Enter to transmit it to the ESP32.
     Typing 'exit' (case-insensitive) closes the session and returns.
 
+    Message length is limited to MAX_MESSAGE_LENGTH bytes. If the user
+    enters a longer message, it will be rejected with a warning.
+
     Args:
         ser (serial.Serial): An open serial connection.
     """
     print("\n=== UART Transmission Mode ===")
-    print("Type messages to send. Type 'exit' to quit.\n")
+    print(f"Type messages to send (max {MAX_MESSAGE_LENGTH} bytes). Type 'exit' to quit.\n")
 
     try:
         while True:
@@ -118,8 +122,14 @@ def transmit_user_input(ser):
                 print("Exiting transmission mode...")
                 break
 
+            # Check message length
+            encoded = user_input.encode("utf-8")
+            if len(encoded) > MAX_MESSAGE_LENGTH:
+                print(f"⚠️ Message too long ({len(encoded)} bytes). Limit is {MAX_MESSAGE_LENGTH} bytes.")
+                continue
+
             # Convert to bytes and send
-            ser.write(user_input.encode("utf-8"))
+            ser.write(encoded)
             ser.write(b"\n")  # optional newline
     except KeyboardInterrupt:
         print("\nKeyboard interrupt detected. Exiting transmission mode.")
@@ -135,7 +145,11 @@ def main():
     Once connected, the user can transmit messages interactively
     until typing 'exit' or closing the connection.
     """
-    print("=== PC ↔ ESP32 UART Communication ===")
+    print("=====================================")
+    print("Project name: pc_uart_proto")
+    print("Author: Blaž Truden")
+    print("Date: 2025-10-04")
+    print("=====================================")
 
     selected_port = select_port()
     if selected_port is None:
