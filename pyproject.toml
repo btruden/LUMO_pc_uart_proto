@@ -4,4 +4,6 @@ version = "0.1.0"
 description = "PC-side CLI program for UART communication using Protobuf"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "pyserial>=3.5",
+]
