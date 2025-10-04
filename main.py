@@ -3,10 +3,10 @@ PC ↔ ESP32 UART Communication
 ==============================
 
 This script provides a command-line interface for connecting to an ESP32
-development board over a serial (UART) connection.  The user can select
-an available COM port, open the connection, and (later) send or receive
-data.  The design emphasizes clarity and modularity so that additional
-features—such as Protobuf serialization—can be added easily.
+development board over a serial (UART) connection. The user can select
+an available COM port, open the connection, and send text data entered
+from the keyboard. The design is modular to simplify future expansion
+(such as adding Protobuf serialization or timestamping).
 
 Author: Blaž Truden
 Date: 2025-10-04
@@ -98,13 +98,42 @@ def open_serial_connection(port, baudrate=BAUDRATE, timeout=TIMEOUT):
         return None
 
 
+def transmit_user_input(ser):
+    """
+    Continuously read lines from the user and send them over UART.
+
+    The user can type any text and press Enter to transmit it to the ESP32.
+    Typing 'exit' (case-insensitive) closes the session and returns.
+
+    Args:
+        ser (serial.Serial): An open serial connection.
+    """
+    print("\n=== UART Transmission Mode ===")
+    print("Type messages to send. Type 'exit' to quit.\n")
+
+    try:
+        while True:
+            user_input = input("> ").strip()
+            if user_input.lower() == "exit":
+                print("Exiting transmission mode...")
+                break
+
+            # Convert to bytes and send
+            ser.write(user_input.encode("utf-8"))
+            ser.write(b"\n")  # optional newline
+    except KeyboardInterrupt:
+        print("\nKeyboard interrupt detected. Exiting transmission mode.")
+    except serial.SerialException as e:
+        print(f"\n⚠️ Serial error: {e}")
+
+
 def main():
     """
     Entry point for the PC-side UART communication program.
 
     Handles user interaction for selecting and opening a COM port.
-    Future extensions will add functions for sending/receiving data
-    serialized with Protobuf.
+    Once connected, the user can transmit messages interactively
+    until typing 'exit' or closing the connection.
     """
     print("=== PC ↔ ESP32 UART Communication ===")
 
@@ -117,7 +146,8 @@ def main():
     if ser is None:
         return
 
-    # Placeholder for next steps (sending/receiving data)
+    transmit_user_input(ser)
+
     ser.close()
     print("🔌 Connection closed.")
 
