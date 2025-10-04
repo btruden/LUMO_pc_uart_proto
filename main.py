@@ -14,6 +14,7 @@ Date: 2025-10-04
 
 import serial
 import serial.tools.list_ports
+from datetime import datetime  # For displaying the current date/time
 
 # === Configuration constants ===
 BAUDRATE = 115200           # Default UART speed (bits per second)
@@ -141,14 +142,18 @@ def main():
     """
     Entry point for the PC-side UART communication program.
 
+    Displays program metadata including the current date and time.
     Handles user interaction for selecting and opening a COM port.
     Once connected, the user can transmit messages interactively
     until typing 'exit' or closing the connection.
     """
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     print("=====================================")
     print("Project name: pc_uart_proto")
     print("Author: Blaž Truden")
     print("Date: 2025-10-04")
+    print(f"Launch time: {now}")
     print("=====================================")
 
     selected_port = select_port()
