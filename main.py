@@ -5,21 +5,76 @@ PC ↔ ESP32 UART Communication
 This script provides a command-line interface for connecting to an ESP32
 development board over a serial (UART) connection. The user can select
 an available COM port, open the connection, and send text data entered
-from the keyboard. The design is modular to simplify future expansion
-(such as adding Protobuf serialization or timestamping).
+from the keyboard. Each message is framed according to the format:
+
+    [SOF][length 2 bytes][payload][CRC16][EOF]
+
+The design is modular to simplify future expansion (such as adding
+Protobuf serialization or timestamping).
 
 Author: Blaž Truden
 Date: 2025-10-04
 """
 
+import struct
 import serial
 import serial.tools.list_ports
-from datetime import datetime  # For displaying the current date/time
+from datetime import datetime
 
 # === Configuration constants ===
-BAUDRATE = 115200           # Default UART speed (bits per second)
-TIMEOUT = 1.0               # Serial read timeout (seconds)
-MAX_MESSAGE_LENGTH = 128    # Maximum allowed message length in bytes
+BAUDRATE = 115200            # Default UART speed (bits per second)
+TIMEOUT = 1.0                # Serial read timeout (seconds)
+MAX_MESSAGE_LENGTH = 128     # Maximum allowed message length in bytes
+
+# === Frame format configuration ===
+SOF = b'\x02'                # Start of Frame (default: STX 0x02)
+EOF = b'\x03'                # End of Frame (default: ETX 0x03)
+
+
+def crc16_ibm(data: bytes) -> int:
+    """
+    Compute a CRC-16/IBM checksum over the given data buffer.
+
+    Polynomial: 0xA001 (reflected 0x8005)
+    Initial value: 0xFFFF
+
+    Args:
+        data (bytes): Input data buffer.
+
+    Returns:
+        int: 16-bit CRC value.
+    """
+    crc = 0xFFFF
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            if crc & 1:
+                crc = (crc >> 1) ^ 0xA001
+            else:
+                crc >>= 1
+    return crc & 0xFFFF
+
+
+def frame_message(payload: bytes) -> bytes:
+    """
+    Construct a framed message according to the format:
+        [SOF][length (2 bytes)][payload][CRC16][EOF]
+
+    The function calculates the payload length, encodes it in big-endian
+    format, computes a CRC16 checksum over the payload, and returns
+    the full framed byte sequence.
+
+    Args:
+        payload (bytes): The message payload to frame.
+
+    Returns:
+        bytes: The complete framed message ready for UART transmission.
+    """
+    length = len(payload)
+    length_bytes = struct.pack(">H", length)  # 2 bytes, big-endian
+    crc = crc16_ibm(payload)
+    crc_bytes = struct.pack(">H", crc)
+    return SOF + length_bytes + payload + crc_bytes + EOF
 
 
 def list_available_ports():
@@ -107,8 +162,9 @@ def transmit_user_input(ser):
     The user can type any text and press Enter to transmit it to the ESP32.
     Typing 'exit' (case-insensitive) closes the session and returns.
 
-    Message length is limited to MAX_MESSAGE_LENGTH bytes. If the user
-    enters a longer message, it will be rejected with a warning.
+    Each message is:
+        - limited to MAX_MESSAGE_LENGTH bytes,
+        - framed as [SOF][length][payload][CRC16][EOF].
 
     Args:
         ser (serial.Serial): An open serial connection.
@@ -123,15 +179,17 @@ def transmit_user_input(ser):
                 print("Exiting transmission mode...")
                 break
 
-            # Check message length
+            # Encode and validate payload length
             encoded = user_input.encode("utf-8")
             if len(encoded) > MAX_MESSAGE_LENGTH:
                 print(f"⚠️ Message too long ({len(encoded)} bytes). Limit is {MAX_MESSAGE_LENGTH} bytes.")
                 continue
 
-            # Convert to bytes and send
-            ser.write(encoded)
-            ser.write(b"\n")  # optional newline
+            # Frame and send the message
+            framed = frame_message(encoded)
+            ser.write(framed)
+            print(f"📤 Sent {len(framed)} bytes.")
+
     except KeyboardInterrupt:
         print("\nKeyboard interrupt detected. Exiting transmission mode.")
     except serial.SerialException as e:
