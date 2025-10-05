@@ -5,12 +5,13 @@ PC ↔ ESP32 UART Communication
 This script provides a command-line interface for connecting to an ESP32
 development board over a serial (UART) connection. The user can select
 an available COM port, open the connection, and send text data entered
-from the keyboard. Each message is framed according to the format:
+from the keyboard. Each message is serialized using Protobuf and then
+framed according to the format:
 
     [SOF][length 2 bytes][payload][CRC16][EOF]
 
-The design is modular to simplify future expansion (such as adding
-Protobuf serialization or timestamping).
+The design is modular to simplify future expansion and mirrors the same
+Protobuf schema used on the ESP32 side.
 
 Author: Blaž Truden
 Date: 2025-10-04
@@ -20,11 +21,13 @@ import struct
 import serial
 import serial.tools.list_ports
 from datetime import datetime
+from time import time
+from uart_proto import uart_pb2  # Generated from uart.proto
 
 # === Configuration constants ===
 BAUDRATE = 115200            # Default UART speed (bits per second)
 TIMEOUT = 1.0                # Serial read timeout (seconds)
-MAX_MESSAGE_LENGTH = 128     # Maximum allowed message length in bytes
+MAX_MESSAGE_LENGTH = 128     # Maximum allowed message length (before framing)
 
 # === Frame format configuration ===
 SOF = b'\x02'                # Start of Frame (default: STX 0x02)
@@ -60,10 +63,6 @@ def frame_message(payload: bytes) -> bytes:
     Construct a framed message according to the format:
         [SOF][length (2 bytes)][payload][CRC16][EOF]
 
-    The function calculates the payload length, encodes it in big-endian
-    format, computes a CRC16 checksum over the payload, and returns
-    the full framed byte sequence.
-
     Args:
         payload (bytes): The message payload to frame.
 
@@ -82,9 +81,7 @@ def list_available_ports():
     Detect and return the list of available COM ports on the host system.
 
     Returns:
-        list[str]: A list of port device names, for example:
-                   ["COM3", "COM5"] on Windows or
-                   ["/dev/ttyUSB0", "/dev/ttyACM0"] on Linux/macOS.
+        list[str]: A list of port device names, e.g. ["COM3", "COM5"].
     """
     ports = serial.tools.list_ports.comports()
     return [port.device for port in ports]
@@ -96,12 +93,11 @@ def select_port():
 
     The user can:
         • Enter a port number to select it.
-        • Enter '0' to refresh the list of detected ports.
-        • Enter 'q' to quit the program.
+        • Enter '0' to refresh the list.
+        • Enter 'q' to quit.
 
     Returns:
-        str | None: The selected port name (e.g., "COM3"), or None if
-        the user chose to quit.
+        str | None: The selected port name, or None if the user quit.
     """
     while True:
         ports = list_available_ports()
@@ -121,7 +117,7 @@ def select_port():
         if choice == "q":
             return None
         elif choice == "0":
-            continue  # Refresh list and start loop again
+            continue  # Refresh list and restart loop
         else:
             try:
                 idx = int(choice)
@@ -143,8 +139,8 @@ def open_serial_connection(port, baudrate=BAUDRATE, timeout=TIMEOUT):
         timeout (float): Read timeout in seconds.
 
     Returns:
-        serial.Serial | None: An open serial connection object if successful,
-        or None if the connection attempt failed.
+        serial.Serial | None: An open serial connection if successful,
+        or None if the attempt failed.
     """
     try:
         ser = serial.Serial(port, baudrate=baudrate, timeout=timeout)
@@ -155,22 +151,36 @@ def open_serial_connection(port, baudrate=BAUDRATE, timeout=TIMEOUT):
         return None
 
 
+def build_data_message(text: str) -> bytes:
+    """
+    Create a serialized Protobuf DataMessage with a timestamp and text.
+
+    Args:
+        text (str): The UTF-8 string payload entered by the user.
+
+    Returns:
+        bytes: Serialized Protobuf message.
+    """
+    msg = uart_pb2.UartMessage()
+    msg.data_message.timestamp = int(time() * 1000)  # milliseconds since epoch
+    msg.data_message.data = text
+    return msg.SerializeToString()
+
+
 def transmit_user_input(ser):
     """
     Continuously read lines from the user and send them over UART.
 
-    The user can type any text and press Enter to transmit it to the ESP32.
-    Typing 'exit' (case-insensitive) closes the session and returns.
-
-    Each message is:
-        - limited to MAX_MESSAGE_LENGTH bytes,
-        - framed as [SOF][length][payload][CRC16][EOF].
+    Each line is:
+        - Serialized into a Protobuf DataMessage
+        - Framed as [SOF][length][payload][CRC16][EOF]
+        - Sent through the open serial port
 
     Args:
         ser (serial.Serial): An open serial connection.
     """
     print("\n=== UART Transmission Mode ===")
-    print(f"Type messages to send (max {MAX_MESSAGE_LENGTH} bytes). Type 'exit' to quit.\n")
+    print(f"Type messages to send. Type 'exit' to quit.\n")
 
     try:
         while True:
@@ -179,16 +189,17 @@ def transmit_user_input(ser):
                 print("Exiting transmission mode...")
                 break
 
-            # Encode and validate payload length
-            encoded = user_input.encode("utf-8")
-            if len(encoded) > MAX_MESSAGE_LENGTH:
-                print(f"⚠️ Message too long ({len(encoded)} bytes). Limit is {MAX_MESSAGE_LENGTH} bytes.")
+            # Serialize user input into Protobuf message
+            serialized = build_data_message(user_input)
+
+            if len(serialized) > MAX_MESSAGE_LENGTH:
+                print(f"⚠️ Protobuf message too long ({len(serialized)} bytes). Limit is {MAX_MESSAGE_LENGTH} bytes.")
                 continue
 
-            # Frame and send the message
-            framed = frame_message(encoded)
+            # Frame and send
+            framed = frame_message(serialized)
             ser.write(framed)
-            print(f"📤 Sent {len(framed)} bytes.")
+            print(f"📤 Sent {len(framed)} bytes (Protobuf payload size: {len(serialized)}).")
 
     except KeyboardInterrupt:
         print("\nKeyboard interrupt detected. Exiting transmission mode.")
@@ -201,9 +212,7 @@ def main():
     Entry point for the PC-side UART communication program.
 
     Displays program metadata including the current date and time.
-    Handles user interaction for selecting and opening a COM port.
-    Once connected, the user can transmit messages interactively
-    until typing 'exit' or closing the connection.
+    Handles COM port selection, connection, and user message transmission.
     """
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
