@@ -23,6 +23,7 @@ import serial.tools.list_ports
 from datetime import datetime
 from time import time
 from uart_proto import uart_pb2  # Generated from uart.proto
+from logger_util import log_message
 
 # === Configuration constants ===
 BAUDRATE = 115200            # Default UART speed (bits per second)
@@ -219,23 +220,27 @@ def main():
     print("=====================================")
     print("Project name: pc_uart_proto")
     print("Author: Blaž Truden")
-    print("Date: 2025-10-04")
-    print(f"Launch time: {now}")
+    print("Version: v1.0.0")    # to be improved
     print("=====================================")
+
+    log_message("Program started.")
 
     selected_port = select_port()
     if selected_port is None:
         print("Exiting program.")
+        log_message("Program terminated.")
         return
 
     ser = open_serial_connection(selected_port)
     if ser is None:
+        log_message("Program terminated.")
         return
 
     transmit_user_input(ser)
 
     ser.close()
     print("🔌 Connection closed.")
+    log_message("Program terminated.")
 
 
 if __name__ == "__main__":
