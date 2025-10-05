@@ -102,6 +102,7 @@ def select_port():
     """
     while True:
         ports = list_available_ports()
+        log_message(f"Detected {len(ports)} COM port(s): {ports}")
         print("\n=== Available COM ports ===")
         if not ports:
             print("  (none detected)")
@@ -116,13 +117,16 @@ def select_port():
         choice = input("\nSelect a port number: ").strip().lower()
 
         if choice == "q":
+            log_message("User quit port selection.")
             return None
         elif choice == "0":
+            log_message("User refreshed the port list.")
             continue  # Refresh list and restart loop
         else:
             try:
                 idx = int(choice)
                 if 1 <= idx <= len(ports):
+                    log_message(f"User selected port: {ports[idx - 1]}")
                     return ports[idx - 1]
                 else:
                     print("Invalid selection. Try again.")
@@ -146,9 +150,11 @@ def open_serial_connection(port, baudrate=BAUDRATE, timeout=TIMEOUT):
     try:
         ser = serial.Serial(port, baudrate=baudrate, timeout=timeout)
         print(f"\n✅ Connected to {port} at {baudrate} baud.")
+        log_message(f"Connected to {port} at {baudrate} baud.")
         return ser
     except serial.SerialException as e:
         print(f"\n❌ Failed to open port {port}: {e}")
+        log_message(f"Failed to open port {port}: {e}")
         return None
 
 
@@ -165,6 +171,7 @@ def build_data_message(text: str) -> bytes:
     msg = uart_pb2.UartMessage()
     msg.data_message.timestamp = int(time() * 1000)  # milliseconds since epoch
     msg.data_message.data = text
+    log_message(f"Built DataMessage: timestamp={msg.data_message.timestamp}, data='{text}'")
     return msg.SerializeToString()
 
 
@@ -186,8 +193,10 @@ def transmit_user_input(ser):
     try:
         while True:
             user_input = input("> ").strip()
+            log_message(f"User input: {user_input}")
             if user_input.lower() == "exit":
                 print("Exiting transmission mode...")
+                log_message("User exited transmission mode.")
                 break
 
             # Serialize user input into Protobuf message
@@ -195,10 +204,12 @@ def transmit_user_input(ser):
 
             if len(serialized) > MAX_MESSAGE_LENGTH:
                 print(f"⚠️ Protobuf message too long ({len(serialized)} bytes). Limit is {MAX_MESSAGE_LENGTH} bytes.")
+                log_message(f"Protobuf message too long: {len(serialized)} bytes.")
                 continue
 
             # Frame and send
             framed = frame_message(serialized)
+            log_message(f"Sending framed message of {len(framed)} bytes.")
             ser.write(framed)
             print(f"📤 Sent {len(framed)} bytes (Protobuf payload size: {len(serialized)}).")
 
