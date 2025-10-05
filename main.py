@@ -231,7 +231,7 @@ def main():
     print("=====================================")
     print("Project name: pc_uart_proto")
     print("Author: Blaž Truden")
-    print("Version: v1.0.0")    # to be improved
+    print("Version: v1.0.0")    # manually updated for now. To be improved
     print("=====================================")
 
     log_message("Program started.")
