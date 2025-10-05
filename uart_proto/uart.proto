@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package uart;
+
+// Generic UART communication frame that can be sent
+// by either the PC or the ESP32.
+message UartMessage {
+  oneof payload {
+    DataMessage data_message = 1;
+    Ack ack = 2;
+  }
+}
+
+// A data message carrying user or system data.
+message DataMessage {
+  // Epoch timestamp in milliseconds.
+  uint64 timestamp = 1;
+
+  // UTF-8 encoded text or payload content.
+  string data = 2;
+}
+
+// Acknowledgment message that can be sent by either side.
+message Ack {
+  // Timestamp in milliseconds when the ACK was generated.
+  uint64 timestamp = 1;
+
+  // Response string (e.g., "ACK", "ERROR", "BUSY", etc.).
+  string response = 2;
+}
