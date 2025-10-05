@@ -236,17 +236,21 @@ def main():
 
     log_message("Program started.")
 
-    selected_port = select_port()
-    if selected_port is None:
-        print("Exiting program.")
-        log_message("Program terminated.")
-        return
+    ser = None
+    while ser is None:
+        selected_port = select_port()
+        if selected_port is None:
+            print("Exiting program.")
+            log_message("Program terminated.")
+            return
 
-    ser = open_serial_connection(selected_port)
-    if ser is None:
-        log_message("Program terminated.")
-        return
+        ser = open_serial_connection(selected_port)
+        if ser is None:
+            print("\n⚠️ Could not open port. Please try again.")
+            log_message(f"Retrying port selection after failure on {selected_port}...")
+            continue  # Retry port selection
 
+    # Once a connection is established
     transmit_user_input(ser)
 
     ser.close()
